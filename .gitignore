@@ -25,5 +25,6 @@ _*.py
 *.code-workspace
 card-3d.yaml
 test-basic.yaml
+hlk-ld6004-dev.yaml
 HLK-LD6004-main/
 HLK-LD6004*.pdf
