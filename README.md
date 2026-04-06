@@ -20,20 +20,23 @@ read/write, and P20 GPIO control — all via Home Assistant.
 |------|-------|
 | Sensor | HLK-LD6004 (60GHz FMCW 3D) |
 | Protocol | TinyFrame UART 115200 8N1 |
-| Supply voltage | 3.3V |
+| Supply voltage | 3.3V, 1A minimum |
 | Tested MCU | ESP32-C3 |
 
 ### Wiring (ESP32-C3 example)
 
 ```
-Radar 3.3V  →  ESP32 3.3V
-Radar GND   →  ESP32 GND
+Radar 3.3V  →  External 3.3V regulator (1A minimum)
+Radar GND   →  Common GND
 Radar TX    →  ESP32 GPIO20 (RX)
 Radar RX    →  ESP32 GPIO21 (TX)
+ESP32 GND   →  Common GND
 ```
 
-> **Note:** The radar draws ~150mA peak. Use a dedicated 3.3V rail if possible — the ESP32
-> on-board regulator works but can cause WiFi issues under load.
+> **Warning:** The radar requires up to **1A at 3.3V**. Do **not** power it from the ESP32
+> dev board's 3.3V pin — the on-board LDO cannot supply enough current and the system
+> will be unstable. Use a dedicated 3.3V regulator (e.g. AMS1117-3.3 with adequate
+> heat dissipation, or a switching regulator) rated for at least 1A.
 
 ## Installation
 
