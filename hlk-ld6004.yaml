@@ -1,0 +1,175 @@
+# HLK-LD6004 ESPHome Example Configuration
+# 60GHz 3D Presence Radar Sensor
+#
+# For local development, place the 'components' folder alongside this YAML and
+# change external_components to type: local / path: components.
+
+esphome:
+  name: hlk-ld6004
+  friendly_name: Radar LD6004
+
+esp32:
+  board: esp32-c3-devkitm-1
+  variant: esp32c3
+  framework:
+    type: esp-idf
+
+# WiFi & API — adjust to your network
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+  fast_connect: true
+  ap:
+    ssid: "Radar-LD6004-AP"
+    password: !secret ap_password
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+logger:
+  baud_rate: 115200
+  hardware_uart: USB_CDC  # Log via USB-JTAG (ESP32-C3 native USB, not UART0)
+  level: WARN  # Reduce log traffic to free CPU for WiFi
+
+# External component — install from GitHub
+external_components:
+  - source:
+      type: git
+      url: https://github.com/javierconfoie/esphome-ld6004
+      ref: main
+    components: [hlk_ld6004]
+
+# UART for the LD6004 sensor
+uart:
+  id: uart_ld6004
+  tx_pin: GPIO21
+  rx_pin: GPIO20
+  baud_rate: 115200
+
+# Hub component
+hlk_ld6004:
+  id: ld6004
+  uart_id: uart_ld6004
+
+# --- Binary sensors ---
+binary_sensor:
+  - platform: hlk_ld6004
+    hlk_ld6004_id: ld6004
+    presence:
+      name: "Presence"
+    zone0_presence:
+      name: "Zone 0 Presence"
+    zone1_presence:
+      name: "Zone 1 Presence"
+    zone2_presence:
+      name: "Zone 2 Presence"
+    zone3_presence:
+      name: "Zone 3 Presence"
+
+# --- Numeric sensors ---
+sensor:
+  - platform: hlk_ld6004
+    hlk_ld6004_id: ld6004
+    target_count:
+      name: "Target Count"
+    target0_x:
+      name: "Target 0 X"
+    target0_y:
+      name: "Target 0 Y"
+    target0_z:
+      name: "Target 0 Z"
+    target0_doppler:
+      name: "Target 0 Doppler"
+    target0_id:
+      name: "Target 0 ID"
+    target1_x:
+      name: "Target 1 X"
+    target1_y:
+      name: "Target 1 Y"
+    target1_z:
+      name: "Target 1 Z"
+    target1_doppler:
+      name: "Target 1 Doppler"
+    target1_id:
+      name: "Target 1 ID"
+    target2_x:
+      name: "Target 2 X"
+    target2_y:
+      name: "Target 2 Y"
+    target2_z:
+      name: "Target 2 Z"
+    target2_doppler:
+      name: "Target 2 Doppler"
+    target2_id:
+      name: "Target 2 ID"
+
+# --- Text sensors ---
+text_sensor:
+  - platform: hlk_ld6004
+    hlk_ld6004_id: ld6004
+    firmware_version:
+      name: "Firmware Version"
+
+# --- Selects (configuration) ---
+select:
+  - platform: hlk_ld6004
+    hlk_ld6004_id: ld6004
+    sensitivity:
+      name: "Sensitivity"
+    trigger_speed:
+      name: "Trigger Speed"
+    install_method:
+      name: "Install Method"
+    operating_mode:
+      name: "Operating Mode"
+    p20_mode:
+      name: "P20 GPIO Mode"
+
+# --- Numbers (configuration) ---
+number:
+  - platform: hlk_ld6004
+    hlk_ld6004_id: ld6004
+    delay_time:
+      name: "Delay Time"
+    sleep_time:
+      name: "Sleep Time"
+    output_interval:
+      name: "Output Interval"
+    dwell_lifecycle:
+      name: "Dwell Lifecycle"
+    z_range_min:
+      name: "Z Range Min"
+    z_range_max:
+      name: "Z Range Max"
+
+# --- Switches ---
+switch:
+  - platform: hlk_ld6004
+    hlk_ld6004_id: ld6004
+    point_cloud:
+      name: "Point Cloud"
+    target_display:
+      name: "Target Display"
+
+# --- Buttons ---
+button:
+  - platform: hlk_ld6004
+    hlk_ld6004_id: ld6004
+    reset_unmanned:
+      name: "Reset Unmanned Timer"
+    auto_interference:
+      name: "Auto Interference Detection"
+    clear_interference:
+      name: "Clear Interference Zones"
+    reset_detection:
+      name: "Reset Detection Zones"
+    clear_dwell:
+      name: "Clear Dwell Zones"
+    refresh_config:
+      name: "Refresh Config"

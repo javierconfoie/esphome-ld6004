@@ -1,0 +1,29 @@
+# ESPHome build artifacts
+.esphome/
+
+# Secrets — never commit credentials
+secrets.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# vim
+*.swp
+*.swo
+
+# Local dev files
+_*.txt
+_*.py
+*.code-workspace
+card-3d.yaml
+test-basic.yaml
+HLK-LD6004-main/
+HLK-LD6004*.pdf
