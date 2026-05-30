@@ -22,6 +22,7 @@ Thumbs.db
 # Local dev files
 _*.txt
 _*.py
+!components/**/__init__.py
 *.code-workspace
 card-3d.yaml
 test-basic.yaml
