@@ -16,13 +16,11 @@ void HLKLD6004Component::setup() {
   this->header_idx_ = 0;
   this->data_idx_ = 0;
 
-  // Immediately activate the radar — it may be in sleep/disabled mode.
-  // The GUI tool sends a "Start" command; we use Normal Mode (0x17).
-  ESP_LOGI(TAG, "Sending initial activation: Normal Mode (0x17)");
-  this->send_control(0x17);  // Normal detection mode
-  this->send_control(0x08);  // Enable target display
-  this->request_firmware_version();  // Query firmware (0xFFFF)
   this->last_init_attempt_ = millis();
+
+  // Read all config 500ms after boot. No write commands — the radar streams
+  // automatically and any write command can disturb streaming.
+  this->set_timeout("initial_config", 500, [this]() { this->query_all_config_(); });
 }
 
 void HLKLD6004Component::loop() {
@@ -36,40 +34,14 @@ void HLKLD6004Component::loop() {
     }
   }
 
-  // Retry activation every 5s until we receive a data frame (not just 0x0100)
+  // Retry activation every 5s until data frames arrive
   if (!this->data_frames_received_ && (millis() - this->last_init_attempt_ > 5000)) {
     this->last_init_attempt_ = millis();
     this->init_retries_++;
-    ESP_LOGD(TAG, "No data frames yet, retrying activation (attempt %u)...", this->init_retries_);
-    this->send_control(0x17);  // Normal detection mode
-    this->send_control(0x08);  // Enable target display
-    this->request_firmware_version();
+    ESP_LOGD(TAG, "No data frames yet, retrying config queries (attempt %u)...", this->init_retries_);
+    this->set_timeout("retry_config", 500, [this]() { this->query_all_config_(); });
   }
 
-  // Request config once after first real data frame — staggered, one query per 200ms
-  if (!this->initial_config_requested_ && this->data_frames_received_) {
-    this->initial_config_requested_ = true;
-    this->config_query_idx_ = 0;
-    this->last_config_query_time_ = millis();
-    ESP_LOGI(TAG, "Data frames flowing, querying config...");
-  }
-
-  // Staggered config queries — one every 1000ms
-  if (this->config_query_idx_ < CONFIG_QUERY_COUNT &&
-      (millis() - this->last_config_query_time_ >= 1000)) {
-    this->send_config_query_(this->config_query_idx_);
-    this->config_query_idx_++;
-    this->last_config_query_time_ = millis();
-  }
-
-  // Retry all config queries if no config responses after 10s
-  if (this->initial_config_requested_ && !this->config_received_ &&
-      this->config_query_idx_ >= CONFIG_QUERY_COUNT &&
-      (millis() - this->last_config_query_time_ > 10000)) {
-    ESP_LOGI(TAG, "No config responses, retrying...");
-    this->config_query_idx_ = 0;
-    this->last_config_query_time_ = millis();
-  }
 }
 
 void HLKLD6004Component::dump_config() {
@@ -225,6 +197,7 @@ void HLKLD6004Component::process_frame_(uint16_t type, const uint8_t *data, uint
                                           read_float_(&p[8]), read_float_(&p[12]),
                                           read_float_(&p[16]), read_float_(&p[20])};
         }
+        this->publish_zones_();
       }
       break;
 
@@ -236,6 +209,7 @@ void HLKLD6004Component::process_frame_(uint16_t type, const uint8_t *data, uint
                                        read_float_(&p[8]), read_float_(&p[12]),
                                        read_float_(&p[16]), read_float_(&p[20])};
         }
+        this->publish_zones_();
       }
       break;
 
@@ -247,6 +221,7 @@ void HLKLD6004Component::process_frame_(uint16_t type, const uint8_t *data, uint
                                    read_float_(&p[8]), read_float_(&p[12]),
                                    read_float_(&p[16]), read_float_(&p[20])};
         }
+        this->publish_zones_();
       }
       break;
 
@@ -451,17 +426,40 @@ void HLKLD6004Component::publish_targets_() {
 // Config queries
 // =====================================================================
 
-void HLKLD6004Component::query_all_config_() {
-  ESP_LOGI(TAG, "Requesting sensor configuration...");
-  this->config_query_idx_ = 0;
-  this->last_config_query_time_ = millis();
+void HLKLD6004Component::publish_zones_() {
+#ifdef USE_TEXT_SENSOR
+  // Compact JSON: single-char keys + 1 decimal to stay under 255-char HA limit.
+  // Format per zone: {"x0":X,"x1":X,"y0":X,"y1":X,"z0":X,"z1":X}  (~42 chars)
+  // 4 zones + brackets + commas = ~175 chars max — safe.
+  char buf[255];
+  auto write_zones = [&](const Zone *zones, text_sensor::TextSensor *sensor) {
+    if (sensor == nullptr) return;
+    int pos = 0;
+    pos += snprintf(buf + pos, sizeof(buf) - pos, "[");
+    for (int i = 0; i < MAX_ZONES; i++) {
+      if (i > 0) pos += snprintf(buf + pos, sizeof(buf) - pos, ",");
+      pos += snprintf(buf + pos, sizeof(buf) - pos,
+        "{\"x0\":%.1f,\"x1\":%.1f,\"y0\":%.1f,\"y1\":%.1f,\"z0\":%.1f,\"z1\":%.1f}",
+        zones[i].x_min, zones[i].x_max,
+        zones[i].y_min, zones[i].y_max,
+        zones[i].z_min, zones[i].z_max);
+    }
+    snprintf(buf + pos, sizeof(buf) - pos, "]");
+    sensor->publish_state(buf);
+  };
+  write_zones(this->detection_zones_, this->detection_zones_text_sensor_);
+  write_zones(this->interference_zones_, this->interference_zones_text_sensor_);
+  write_zones(this->dwell_zones_, this->dwell_zones_text_sensor_);
+#endif
 }
 
-void HLKLD6004Component::send_config_query_(uint8_t idx) {
+void HLKLD6004Component::query_all_config_() {
+  ESP_LOGI(TAG, "Requesting sensor configuration...");
+  // Stagger queries 150ms apart using set_timeout — total ~1.5s for all params.
+  // Zones (0x02) excluded — zone loading requires a separate rework.
   static const uint16_t queries[] = {
-    0xFFFF,  // firmware (special — uses request_firmware_version)
+    0xFFFF,  // firmware
     0x0D,    // sensitivity
-    0x02,    // zones (this one works!)
     0x11,    // trigger speed
     0x15,    // install method
     0x18,    // operating mode
@@ -472,12 +470,16 @@ void HLKLD6004Component::send_config_query_(uint8_t idx) {
     0x26,    // dwell lifecycle
     0x27,    // output interval
   };
-  if (idx >= CONFIG_QUERY_COUNT) return;
-  ESP_LOGD(TAG, "Config query %u/%u: cmd=0x%04X", idx + 1, (uint8_t)CONFIG_QUERY_COUNT, queries[idx]);
-  if (queries[idx] == 0xFFFF) {
-    this->request_firmware_version();
-  } else {
-    this->send_control(queries[idx]);
+  static const uint8_t N = sizeof(queries) / sizeof(queries[0]);
+  for (uint8_t i = 0; i < N; i++) {
+    const uint16_t cmd = queries[i];
+    this->set_timeout("cfg_q" + std::to_string(i), i * 150, [this, cmd]() {
+      ESP_LOGD(TAG, "Config query cmd=0x%04X", cmd);
+      if (cmd == 0xFFFF)
+        this->request_firmware_version();
+      else
+        this->send_control(cmd);
+    });
   }
 }
 
@@ -542,8 +544,38 @@ void HLKLD6004Component::send_set_z_range(float z_min, float z_max) {
   this->send_frame_(TYPE_SET_Z_RANGE, data, 8);
 }
 
-void HLKLD6004Component::send_set_zone(uint8_t area_id, float x_min, float x_max,
-                                       float y_min, float y_max, float z_min, float z_max) {
+void HLKLD6004Component::send_set_detection_zone(uint8_t index, float x_min, float x_max,
+                                                 float y_min, float y_max, float z_min, float z_max) {
+  if (index >= MAX_ZONES) return;
+  ESP_LOGI(TAG, "Set detection zone %u: x[%.2f,%.2f] y[%.2f,%.2f] z[%.2f,%.2f]",
+           index, x_min, x_max, y_min, y_max, z_min, z_max);
+  this->send_zone_(4 + index, x_min, x_max, y_min, y_max, z_min, z_max);
+  this->detection_zones_[index] = {x_min, x_max, y_min, y_max, z_min, z_max};
+  this->publish_zones_();
+}
+
+void HLKLD6004Component::send_set_interference_zone(uint8_t index, float x_min, float x_max,
+                                                    float y_min, float y_max, float z_min, float z_max) {
+  if (index >= MAX_ZONES) return;
+  ESP_LOGI(TAG, "Set interference zone %u: x[%.2f,%.2f] y[%.2f,%.2f] z[%.2f,%.2f]",
+           index, x_min, x_max, y_min, y_max, z_min, z_max);
+  this->send_zone_(0 + index, x_min, x_max, y_min, y_max, z_min, z_max);
+  this->interference_zones_[index] = {x_min, x_max, y_min, y_max, z_min, z_max};
+  this->publish_zones_();
+}
+
+void HLKLD6004Component::send_set_dwell_zone(uint8_t index, float x_min, float x_max,
+                                             float y_min, float y_max, float z_min, float z_max) {
+  if (index >= MAX_ZONES) return;
+  ESP_LOGI(TAG, "Set dwell zone %u: x[%.2f,%.2f] y[%.2f,%.2f] z[%.2f,%.2f]",
+           index, x_min, x_max, y_min, y_max, z_min, z_max);
+  this->send_zone_(8 + index, x_min, x_max, y_min, y_max, z_min, z_max);
+  this->dwell_zones_[index] = {x_min, x_max, y_min, y_max, z_min, z_max};
+  this->publish_zones_();
+}
+
+void HLKLD6004Component::send_zone_(uint8_t area_id, float x_min, float x_max,
+                                    float y_min, float y_max, float z_min, float z_max) {
   uint8_t data[28];
   data[0] = area_id; data[1] = 0; data[2] = 0; data[3] = 0;
   float vals[6] = {x_min, x_max, y_min, y_max, z_min, z_max};

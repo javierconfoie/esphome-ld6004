@@ -27,6 +27,43 @@ wifi:
 api:
   encryption:
     key: !secret api_encryption_key
+  services:
+    - service: set_detection_zone
+      variables:
+        zone_index: int
+        x_min: float
+        x_max: float
+        y_min: float
+        y_max: float
+        z_min: float
+        z_max: float
+      then:
+        - lambda: |-
+            id(ld6004).send_set_detection_zone(zone_index, x_min, x_max, y_min, y_max, z_min, z_max);
+    - service: set_interference_zone
+      variables:
+        zone_index: int
+        x_min: float
+        x_max: float
+        y_min: float
+        y_max: float
+        z_min: float
+        z_max: float
+      then:
+        - lambda: |-
+            id(ld6004).send_set_interference_zone(zone_index, x_min, x_max, y_min, y_max, z_min, z_max);
+    - service: set_dwell_zone
+      variables:
+        zone_index: int
+        x_min: float
+        x_max: float
+        y_min: float
+        y_max: float
+        z_min: float
+        z_max: float
+      then:
+        - lambda: |-
+            id(ld6004).send_set_dwell_zone(zone_index, x_min, x_max, y_min, y_max, z_min, z_max);
 
 ota:
   - platform: esphome
@@ -115,6 +152,12 @@ text_sensor:
     hlk_ld6004_id: ld6004
     firmware_version:
       name: "Firmware Version"
+    detection_zones:
+      name: "Detection Zones"
+    interference_zones:
+      name: "Interference Zones"
+    dwell_zones:
+      name: "Dwell Zones"
 
 # --- Selects (configuration) ---
 select:

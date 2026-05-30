@@ -95,6 +95,9 @@ class HLKLD6004Component : public Component, public uart::UARTDevice {
   // --- Text sensor setters ---
 #ifdef USE_TEXT_SENSOR
   void set_firmware_text_sensor(text_sensor::TextSensor *s) { this->firmware_text_sensor_ = s; }
+  void set_detection_zones_text_sensor(text_sensor::TextSensor *s) { this->detection_zones_text_sensor_ = s; }
+  void set_interference_zones_text_sensor(text_sensor::TextSensor *s) { this->interference_zones_text_sensor_ = s; }
+  void set_dwell_zones_text_sensor(text_sensor::TextSensor *s) { this->dwell_zones_text_sensor_ = s; }
 #endif
 
   // --- Select setters ---
@@ -143,8 +146,12 @@ class HLKLD6004Component : public Component, public uart::UARTDevice {
   void send_set_output_interval(uint32_t interval);
   void send_set_dwell_lifecycle(uint32_t lifecycle);
   void send_set_z_range(float z_min, float z_max);
-  void send_set_zone(uint8_t area_id, float x_min, float x_max,
-                     float y_min, float y_max, float z_min, float z_max);
+  void send_set_detection_zone(uint8_t index, float x_min, float x_max,
+                               float y_min, float y_max, float z_min, float z_max);
+  void send_set_interference_zone(uint8_t index, float x_min, float x_max,
+                                  float y_min, float y_max, float z_min, float z_max);
+  void send_set_dwell_zone(uint8_t index, float x_min, float x_max,
+                           float y_min, float y_max, float z_min, float z_max);
   void send_set_baud_rate(uint8_t rate);
   void request_firmware_version();
   void query_all_config_();
@@ -198,10 +205,12 @@ class HLKLD6004Component : public Component, public uart::UARTDevice {
   void process_frame_(uint16_t type, const uint8_t *data, uint16_t len);
   void publish_presence_();
   void publish_targets_();
-  void send_config_query_(uint8_t idx);
+  void publish_zones_();
 
   // Frame encoding
   void send_frame_(uint16_t type, const uint8_t *data, uint16_t len);
+  void send_zone_(uint8_t area_id, float x_min, float x_max,
+                  float y_min, float y_max, float z_min, float z_max);
   static uint8_t calc_checksum_(const uint8_t *data, uint16_t len);
   static float read_float_(const uint8_t *p);
   static uint32_t read_u32_le_(const uint8_t *p);
@@ -245,15 +254,11 @@ class HLKLD6004Component : public Component, public uart::UARTDevice {
   Zone dwell_zones_[MAX_ZONES]{};
 
   // Stats
-  static const uint8_t CONFIG_QUERY_COUNT = 12;
   uint32_t frames_received_{0};
   uint32_t checksum_errors_{0};
   uint32_t last_update_time_{0};
   uint32_t last_init_attempt_{0};
   uint32_t init_retries_{0};
-  uint8_t config_query_idx_{255};  // 255 = not querying
-  uint32_t last_config_query_time_{0};
-  bool initial_config_requested_{false};
   bool data_frames_received_{false};
   bool combined_report_logged_{false};
   bool config_received_{false};
@@ -273,6 +278,9 @@ class HLKLD6004Component : public Component, public uart::UARTDevice {
 #endif
 #ifdef USE_TEXT_SENSOR
   text_sensor::TextSensor *firmware_text_sensor_{nullptr};
+  text_sensor::TextSensor *detection_zones_text_sensor_{nullptr};
+  text_sensor::TextSensor *interference_zones_text_sensor_{nullptr};
+  text_sensor::TextSensor *dwell_zones_text_sensor_{nullptr};
 #endif
 #ifdef USE_SELECT
   HLKLD6004Select *sensitivity_select_{nullptr};

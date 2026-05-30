@@ -28,3 +28,5 @@ test-basic.yaml
 hlk-ld6004-dev.yaml
 HLK-LD6004-main/
 HLK-LD6004*.pdf
+
+boot_log*.txt
